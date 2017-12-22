@@ -1,0 +1,82 @@
+---
+title: "Practical Machine Learning Course Project - Weight Lifting Exercise"
+author: "Dataactuary / Jarno"
+date: "December 2017"
+---
+```{r libraries, echo=FALSE , warning=FALSE, message=FALSE}
+# libraries loaded here
+library(knitr )
+library(caret) 
+library(AppliedPredictiveModeling)
+library(randomForest)
+
+# load training and test data
+trainRaw<-read.csv("./data/pml-training.csv")
+testRaw<-read.csv("./data/pml-testing.csv")
+
+```
+
+### Overview
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har.
+The goal of your project is to predict the manner in which they did the exercise.
+
+### Choosing Data
+The training dataset has 160 variables, 159 predictor candidate variables and one outcome variable, _classe_.  
+Using _nearZeroVar_ 60 variables are removed from the training set. 
+Next, I get rid of some columns that do not contribute much to the accelerometer measurements, like _username_ and _timestamps_. Empty NA columns are removed as well. 
+
+```{r, cache = T}
+trainRaw <- trainRaw[,-nearZeroVar(trainRaw)]
+trainRaw <- trainRaw[, colSums(is.na(trainRaw)) == 0] 
+trainRaw <- trainRaw[,-match("X",names(trainRaw))]
+trainRaw <- trainRaw[,-match("user_name",names(trainRaw))]
+trainRaw <- trainRaw[,-grep("^.+timestamp",names(trainRaw))]
+trainRaw <- trainRaw[,-match("num_window",names(trainRaw))]
+training<-trainRaw 
+CNames<-names(training)
+CNames<-CNames[!CNames=="classe"]
+testCases<-testRaw[,CNames]
+```  
+Now, the cleaned training data set contains 19622 observations and 53 variables.
+
+I now split the cleaned training set into training data (70%) and a test data set (30%). We will use the test data set to conduct cross validation in future steps.  
+
+```{r, cache = T}
+set.seed(13) 
+inTrain <- createDataPartition(training$classe, p=0.70, list=F)
+trainData <- training[inTrain, ]
+testData <- training[-inTrain, ]
+```
+
+### Data Modeling
+I fit a predictive model using *Random Forest* algorithm because it automatically selects important variables and is robust to correlated covariates and outliers in general. I will use *5-fold cross validation* when applying the algorithm.  
+
+```{r, cache = T}
+controlRf <- trainControl(method="cv", 5)
+modelRf <- train(classe ~ ., data=trainData, method="rf", trControl=controlRf)
+modelRf
+```
+
+I now apply the model to the test set for accuracy and according out of sample error:
+```{r, cache = T, echo=FALSE}
+predictRf <- predict(modelRf, testData)
+c<-confusionMatrix(testData$classe, predictRf)$table
+
+accuracy <- postResample(predictRf, testData$classe)
+oose <- 1 - as.numeric(confusionMatrix(testData$classe, predictRf)$overall[1])
+```
+```{r, echo=FALSE}
+c
+accuracy
+oose
+```
+So, the estimated accuracy of the model is 99.41% and the estimated out-of-sample error is 0.59%.
+
+### Predicting for Test Data Set
+Now I apply the model to the new test cases to predict classe for these 20 cases: 
+```{r, cache = T, echo=FALSE}
+result <- predict(modelRf, testCases)
+cbind(1:20, as.character(result))
+```  
+
+
